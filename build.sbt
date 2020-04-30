@@ -35,8 +35,6 @@ lazy val lang =
           PB.targets += scalapb.gen(flatPackage = true) -> (sourceManaged in Compile).value,
           PB.protoSources := Seq(baseDirectory.value.getParentFile / "shared" / "src" / "main" / "protobuf"),
           PB.deleteTargetDirectory := false,
-          sources in (Compile, doc) := Seq.empty,
-          publishArtifact in (Compile, packageDoc) := false
         )
       )
     )
@@ -79,7 +77,8 @@ lazy val `node-tests` = project
   .in(file("node/tests"))
   .dependsOn(`node-testkit` % "test", `lang-testkit` % "test")
   .settings(
-    libraryDependencies ++= Dependencies.nodeTests.value
+    libraryDependencies ++= Dependencies.nodeTests.value,
+    Test / parallelExecution := true
   )
 lazy val `grpc-server`    = project.dependsOn(node % "compile;runtime->provided", `node-testkit` % "test")
 lazy val `node-it`        = project.dependsOn(node, `node-testkit`, `grpc-server`)
@@ -91,6 +90,10 @@ lazy val `blockchain-updates` = project.dependsOn(node % "compile;test->test;run
 lazy val it = project
   .settings(
     description := "Hack for near future to support builds in TeamCity for old and new branches both",
+    concurrentRestrictions := {
+      val threadNumber = Option(System.getenv("SBT_THREAD_NUMBER")).fold(1)(_.toInt)
+      Seq(Tags.limit(Tags.ForkedTestGroup, threadNumber))
+    },
     Test / test := Def
       .sequential(
         root / packageAll,
@@ -112,7 +115,7 @@ lazy val root = (project in file("."))
 
 inScope(Global)(
   Seq(
-    scalaVersion := "2.12.9",
+    scalaVersion := "2.12.10",
     organization := "com.wavesplatform",
     organizationName := "Waves Platform",
     V.fallback := (1, 2, 5),
@@ -148,12 +151,10 @@ inScope(Global)(
      * u - select the JUnit XML reporter with output directory
      */
     testOptions += Tests.Argument("-oIDOF", "-u", "target/test-reports"),
-    concurrentRestrictions := {
-      val threadNumber = Option(System.getenv("SBT_THREAD_NUMBER")).fold(1)(_.toInt)
-      Seq(Tags.limit(Tags.ForkedTestGroup, threadNumber))
-    },
     network := Network(sys.props.get("network")),
-    resolvers += Resolver.sonatypeRepo("snapshots")
+    resolvers += Resolver.sonatypeRepo("snapshots"),
+    sources in (Compile, doc) := Seq.empty,
+    publishArtifact in (Compile, packageDoc) := false
   )
 )
 
@@ -185,6 +186,8 @@ packageAll := Def
 
 lazy val checkPRRaw = taskKey[Unit]("Build a project and run unit tests")
 checkPRRaw := {
+
+
   try {
     cleanAll.value // Hack to run clean before all tasks
   } finally {
